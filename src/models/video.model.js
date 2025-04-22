@@ -1,39 +1,46 @@
-import mongoose, { Schema } from "mongoose";
-import mongooseAggregatePaginate from "mongoose-aggregate-paginate-v2";
+import { DataTypes } from "sequelize";
+import { sequelize } from "../../config/sequelize.js"; // adjust path as needed
+import User from "./user.model.js"; // adjust path as needed
 
-const videoSchema = new Schema(
+const Video = sequelize.define(
+  "Video",
   {
     videoFile: {
-      type: String, //cloudinary url
-      required: true,
+      type: DataTypes.STRING,
+      allowNull: false,
+      comment: "Cloudinary URL",
     },
     thumbnail: {
-      type: String, //cloudinary url
-      required: true,
+      type: DataTypes.STRING,
+      allowNull: false,
+      comment: "Cloudinary URL",
     },
     title: {
-      type: String,
-      required: true,
+      type: DataTypes.STRING,
+      allowNull: false,
     },
     description: {
-      type: String,
-      required: true,
+      type: DataTypes.STRING,
+      allowNull: false,
     },
     duration: {
-      type: Number,
-      required: true,
+      type: DataTypes.INTEGER,
+      allowNull: false,
     },
     views: {
-      type: Number,
-      default: 0,
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
     },
     isPublished: {
-      type: Boolean,
-      default: true,
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
     },
-    owner: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
+    ownerId: {
+      type: DataTypes.INTEGER,
+      references: {
+        model: User,
+        key: "id",
+      },
     },
   },
   {
@@ -41,6 +48,4 @@ const videoSchema = new Schema(
   }
 );
 
-videoSchema.plugin(mongooseAggregatePaginate);
-
-export const Video = mongoose.model("Video", videoSchema);
+export default Video;

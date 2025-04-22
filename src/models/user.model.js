@@ -1,52 +1,101 @@
-import mongoose, { Schema, Types } from "mongoose";
+import { DataTypes } from "sequelize";
+import { sequelize } from "../../config/sequelize.js"; // Corrected export
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 
-const userSchema = new Schema(
+const User = sequelize.define(
+  "User",
   {
     username: {
-      type: String,
-      required: true,
+      type: DataTypes.STRING,
+      allowNull: false,
       unique: true,
-      lowercase: true,
-      trim: true,
-      index: true,
+      set(value) {
+        this.setDataValue("username", value.trim().toLowerCase());
+      },
     },
     email: {
-      type: String,
-      required: true,
+      type: DataTypes.STRING,
+      allowNull: false,
       unique: true,
-      lowecase: true,
-      trim: true,
+      set(value) {
+        this.setDataValue("email", value.trim().toLowerCase());
+      },
     },
     fullName: {
-      type: String,
-      required: true,
-      trim: true,
-      index: true,
+      type: DataTypes.STRING,
+      allowNull: false,
+      set(value) {
+        this.setDataValue("fullName", value.trim());
+      },
     },
     avatar: {
-      type: String, // cloudinary url
-      required: true,
+      type: DataTypes.STRING,
+      allowNull: false,
+      comment: "Cloudinary URL",
     },
     coverImage: {
-      type: String, // cloudinary url
+      type: DataTypes.STRING,
+      comment: "Cloudinary URL",
     },
-    watchHistory: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "Video",
-      },
-    ],
     password: {
-      type: String,
-      required: [true, "Password is required"],
+      type: DataTypes.STRING,
+      allowNull: false,
     },
     refreshToken: {
-      type: String,
+      type: DataTypes.STRING,
     },
   },
   {
     timestamps: true,
+    hooks: {
+      beforeSave: async (user) => {
+        if (user.changed("password")) {
+          user.password = await bcrypt.hash(user.password, 10);
+        }
+      },
+    },
+    indexes: [
+      {
+        fields: ["username"],
+      },
+      {
+        fields: ["fullName"],
+      },
+    ],
   }
 );
 
-export const User = mongoose.model("User", userSchema);
+// Instance methods
+User.prototype.isPasswordCorrect = async function (password) {
+  return await bcrypt.compare(password, this.password);
+};
+
+User.prototype.generateAccessToken = function () {
+  return jwt.sign(
+    {
+      id: this.id,
+      email: this.email,
+      username: this.username,
+      fullName: this.fullName,
+    },
+    process.env.ACCESS_TOKEN_SECRET,
+    {
+      expiresIn: process.env.ACCESS_TOKEN_EXPIRY,
+    }
+  );
+};
+
+User.prototype.generateRefreshToken = function () {
+  return jwt.sign(
+    {
+      id: this.id,
+    },
+    process.env.REFRESH_TOKEN_SECRET,
+    {
+      expiresIn: process.env.REFRESH_TOKEN_EXPIRY,
+    }
+  );
+};
+
+export default User;
