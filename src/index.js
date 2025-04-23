@@ -8,8 +8,10 @@ dotenv.config({
 
 (async () => {
   await connectDB();
-  app.listen(process.env.PORT || 8000, () => {
-    console.log(`⚙️ Server is running at port : ${process.env.PORT || 8000}`);
+  app.listen(process.env.DB_PORT || 8000, () => {
+    console.log(
+      `⚙️ Server is running at port : ${process.env.DB_PORT || 8000}`
+    );
   });
 })();
 
