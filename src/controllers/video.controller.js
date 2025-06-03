@@ -1,159 +1,3 @@
-// import Video from "../models/video.model.js";
-// import User from "../models/user.model.js";
-// import Channel from "../models/Channel.model.js";
-// import { ApiError } from "../utils/ApiError.js";
-// import { ApiResponse } from "../utils/ApiResponse.js";
-// import { asyncHandler } from "../utils/asyncHandler.js";
-// import uploadOnCloudinary from "../utils/cloudinary.js";
-// import { getVideoDuration } from "../helper/getVideoDuration.js";
-// import streamUploadHLS from "../utils/ffmpegHelpers/streamUploadHLS.js";
-// import Ffmpeg from "fluent-ffmpeg";
-// import fs from "fs";
-// import path from "path";
-// import os from "os";
-// import { rimraf } from "rimraf";
-// import { v4 as uuidv4 } from "uuid";
-// import { io } from "../app.js";
-// import { promisify } from "util";
-// import Comment from "../models/comment.model.js";
-
-// const uploadVideo = asyncHandler(async (req, res) => {
-//   const userId = req.user.id;
-//   const socketId = req.body.socketId;
-
-//   if (!userId) throw new ApiError(400, "User ID is required");
-
-//   const channel = await Channel.findOne({ where: { ownerId: userId } });
-//   if (!channel) throw new ApiError(400, "Channel not found");
-
-//   const { title, description } = req.body;
-
-//   const videoFile = req.files?.videoFile?.[0]?.path;
-//   let thumbnail = req.files?.thumbnail?.[0]?.path;
-
-//   if (!videoFile) throw new ApiError(400, "Video is required");
-
-//   let duration;
-//   try {
-//     duration = await getVideoDuration(videoFile);
-//   } catch (err) {
-//     throw new ApiError(500, "Failed to get video duration");
-//   }
-
-//   const tempDir = path.join(os.tmpdir(), uuidv4());
-//   const cloudinaryFolder = `hls_videos/${uuidv4()}`; // Unique folder per video
-//   fs.mkdirSync(tempDir, { recursive: true });
-
-//   try {
-//     // Step 1 & 2: Convert to HLS + Stream upload to Cloudinary
-
-//     io.to(socketId).emit("uploadProgress", {
-//       percent: 0,
-//       status: "Starting upload...",
-//     });
-
-//     const uploadedFiles = await streamUploadHLS(
-//       videoFile,
-//       tempDir,
-//       cloudinaryFolder,
-//       socketId
-//     );
-
-//     // Find the .m3u8 URL
-//     const playlistUrl = uploadedFiles.find((f) => f.file === "index.m3u8")?.url;
-
-//     // ----------- NEW CODE: Take screenshot of each segment and upload to Cloudinary -----------
-//     const segmentScreenshots = [];
-//     const segmentFiles = fs
-//       .readdirSync(tempDir)
-//       .filter((f) => f.endsWith(".ts"))
-//       .sort(); // Ensure order
-
-//     for (const segmentFile of segmentFiles) {
-//       const segmentPath = path.join(tempDir, segmentFile);
-//       const screenshotPath = path.join(tempDir, `${segmentFile}.jpg`);
-//       // Take screenshot at 1 second (or 0 if too short)
-//       await new Promise((resolve, reject) => {
-//         Ffmpeg(segmentPath)
-//           .on("end", resolve)
-//           .on("error", reject)
-//           .screenshots({
-//             count: 1,
-//             timemarks: ["1"], // 1 second into the segment
-//             filename: `${segmentFile}.jpg`,
-//             folder: tempDir,
-//           });
-//       });
-//       // Upload screenshot to Cloudinary
-//       const uploaded = await uploadOnCloudinary(
-//         screenshotPath,
-//         `segment_screenshots`
-//       );
-//       segmentScreenshots.push({
-//         segment: segmentFile,
-//         screenshotUrl: uploaded.secure_url,
-//       });
-//     }
-//     // ----------- END NEW CODE -----------
-
-//     // Step 3: Upload thumbnail
-//     let uploadedThumbnail;
-//     if (thumbnail) {
-//       uploadedThumbnail = await uploadOnCloudinary(thumbnail, `thumbnails`);
-//     } else {
-//       // No thumbnail provided, extract first frame from video
-//       const firstFramePath = path.join(tempDir, "first_frame.jpg");
-//       await new Promise((resolve, reject) => {
-//         Ffmpeg(videoFile)
-//           .on("end", resolve)
-//           .on("error", reject)
-//           .screenshots({
-//             count: 2,
-//             timemarks: ["1"], // first frame
-//             filename: "first_frame.jpg",
-//             folder: tempDir,
-//           });
-//       });
-//       uploadedThumbnail = await uploadOnCloudinary(
-//         firstFramePath,
-//         `thumbnails`
-//       );
-//     }
-
-//     // Step 4: Save to DB
-//     const video = await Video.create({
-//       title,
-//       description,
-//       duration,
-//       videoFile: playlistUrl,
-//       thumbnail: uploadedThumbnail.secure_url,
-//       ownerId: userId,
-//       channelId: channel.id,
-//     });
-
-//     // Return segment screenshots in the response (optional)
-//     res
-//       .status(201)
-//       .json(
-//         new ApiResponse(
-//           201,
-//           { ...video.toJSON(), segmentScreenshots },
-//           "Video uploaded successfully"
-//         )
-//       );
-//   } catch (error) {
-//     io.to(socketId).emit("uploadError", {
-//       error: "Upload failed",
-//       details: error.message,
-//     });
-//     throw new ApiError(500, "Video upload failed", error);
-//   } finally {
-//     rimraf.sync(tempDir); // Cleanup
-//   }
-// });
-
-// this is a chat gpt
-
 import Video from "../models/video.model.js";
 import User from "../models/user.model.js";
 import Channel from "../models/Channel.model.js";
@@ -170,30 +14,8 @@ import os from "os";
 import { rimraf } from "rimraf";
 import { v4 as uuidv4 } from "uuid";
 import { io } from "../app.js";
+import { promisify } from "util";
 import Comment from "../models/comment.model.js";
-
-// Helper function to generate VTT content
-function generateVTTFile(segmentScreenshots, segmentDuration = 10) {
-  const vttLines = ["WEBVTT", ""];
-
-  segmentScreenshots.forEach((screenshot, index) => {
-    const start = index * segmentDuration;
-    const end = (index + 1) * segmentDuration;
-
-    const formatTime = (seconds) => {
-      const h = String(Math.floor(seconds / 3600)).padStart(2, "0");
-      const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
-      const s = String(seconds % 60).padStart(2, "0");
-      return `${h}:${m}:${s}.000`;
-    };
-
-    vttLines.push(`${formatTime(start)} --> ${formatTime(end)}`);
-    vttLines.push(screenshot.screenshotUrl);
-    vttLines.push(""); // blank line
-  });
-
-  return vttLines.join("\n");
-}
 
 const uploadVideo = asyncHandler(async (req, res) => {
   const userId = req.user.id;
@@ -205,6 +27,7 @@ const uploadVideo = asyncHandler(async (req, res) => {
   if (!channel) throw new ApiError(400, "Channel not found");
 
   const { title, description } = req.body;
+
   const videoFile = req.files?.videoFile?.[0]?.path;
   let thumbnail = req.files?.thumbnail?.[0]?.path;
 
@@ -218,10 +41,12 @@ const uploadVideo = asyncHandler(async (req, res) => {
   }
 
   const tempDir = path.join(os.tmpdir(), uuidv4());
-  const cloudinaryFolder = `hls_videos/${uuidv4()}`;
+  const cloudinaryFolder = `hls_videos/${uuidv4()}`; // Unique folder per video
   fs.mkdirSync(tempDir, { recursive: true });
 
   try {
+    // Step 1 & 2: Convert to HLS + Stream upload to Cloudinary
+
     io.to(socketId).emit("uploadProgress", {
       percent: 0,
       status: "Starting upload...",
@@ -234,31 +59,32 @@ const uploadVideo = asyncHandler(async (req, res) => {
       socketId
     );
 
+    // Find the .m3u8 URL
     const playlistUrl = uploadedFiles.find((f) => f.file === "index.m3u8")?.url;
 
-    // Generate and upload segment screenshots
+    // ----------- NEW CODE: Take screenshot of each segment and upload to Cloudinary -----------
     const segmentScreenshots = [];
     const segmentFiles = fs
       .readdirSync(tempDir)
       .filter((f) => f.endsWith(".ts"))
-      .sort();
+      .sort(); // Ensure order
 
     for (const segmentFile of segmentFiles) {
       const segmentPath = path.join(tempDir, segmentFile);
       const screenshotPath = path.join(tempDir, `${segmentFile}.jpg`);
-
+      // Take screenshot at 1 second (or 0 if too short)
       await new Promise((resolve, reject) => {
         Ffmpeg(segmentPath)
           .on("end", resolve)
           .on("error", reject)
           .screenshots({
             count: 1,
-            timemarks: ["1"],
+            timemarks: ["1"], // 1 second into the segment
             filename: `${segmentFile}.jpg`,
             folder: tempDir,
           });
       });
-
+      // Upload screenshot to Cloudinary
       const uploaded = await uploadOnCloudinary(
         screenshotPath,
         `segment_screenshots`
@@ -268,28 +94,22 @@ const uploadVideo = asyncHandler(async (req, res) => {
         screenshotUrl: uploaded.secure_url,
       });
     }
+    // ----------- END NEW CODE -----------
 
-    // 🆕 Generate VTT file
-    const vttContent = generateVTTFile(segmentScreenshots, 10); // each segment = 10s
-    const vttPath = path.join(tempDir, "preview.vtt");
-    fs.writeFileSync(vttPath, vttContent);
-
-    const uploadedVtt = await uploadOnCloudinary(vttPath, `vtt_files`);
-    const vttUrl = uploadedVtt.secure_url;
-
-    // Upload thumbnail
+    // Step 3: Upload thumbnail
     let uploadedThumbnail;
     if (thumbnail) {
       uploadedThumbnail = await uploadOnCloudinary(thumbnail, `thumbnails`);
     } else {
+      // No thumbnail provided, extract first frame from video
       const firstFramePath = path.join(tempDir, "first_frame.jpg");
       await new Promise((resolve, reject) => {
         Ffmpeg(videoFile)
           .on("end", resolve)
           .on("error", reject)
           .screenshots({
-            count: 1,
-            timemarks: ["1"],
+            count: 2,
+            timemarks: ["1"], // first frame
             filename: "first_frame.jpg",
             folder: tempDir,
           });
@@ -300,7 +120,7 @@ const uploadVideo = asyncHandler(async (req, res) => {
       );
     }
 
-    // Save to DB
+    // Step 4: Save to DB
     const video = await Video.create({
       title,
       description,
@@ -311,17 +131,16 @@ const uploadVideo = asyncHandler(async (req, res) => {
       channelId: channel.id,
     });
 
-    res.status(201).json(
-      new ApiResponse(
-        201,
-        {
-          ...video.toJSON(),
-          segmentScreenshots,
-          vttUrl,
-        },
-        "Video uploaded successfully"
-      )
-    );
+    // Return segment screenshots in the response (optional)
+    res
+      .status(201)
+      .json(
+        new ApiResponse(
+          201,
+          { ...video.toJSON(), segmentScreenshots },
+          "Video uploaded successfully"
+        )
+      );
   } catch (error) {
     io.to(socketId).emit("uploadError", {
       error: "Upload failed",
@@ -329,9 +148,190 @@ const uploadVideo = asyncHandler(async (req, res) => {
     });
     throw new ApiError(500, "Video upload failed", error);
   } finally {
-    rimraf.sync(tempDir);
+    rimraf.sync(tempDir); // Cleanup
   }
 });
+
+// this is a chat gpt
+
+// import Video from "../models/video.model.js";
+// import User from "../models/user.model.js";
+// import Channel from "../models/Channel.model.js";
+// import { ApiError } from "../utils/ApiError.js";
+// import { ApiResponse } from "../utils/ApiResponse.js";
+// import { asyncHandler } from "../utils/asyncHandler.js";
+// import uploadOnCloudinary from "../utils/cloudinary.js";
+// import { getVideoDuration } from "../helper/getVideoDuration.js";
+// import streamUploadHLS from "../utils/ffmpegHelpers/streamUploadHLS.js";
+// import Ffmpeg from "fluent-ffmpeg";
+// import fs from "fs";
+// import path from "path";
+// import os from "os";
+// import { rimraf } from "rimraf";
+// import { v4 as uuidv4 } from "uuid";
+// import { io } from "../app.js";
+// import Comment from "../models/comment.model.js";
+
+// // Helper function to generate VTT content
+// function generateVTTFile(segmentScreenshots, segmentDuration = 10) {
+//   const vttLines = ["WEBVTT", ""];
+
+//   segmentScreenshots.forEach((screenshot, index) => {
+//     const start = index * segmentDuration;
+//     const end = (index + 1) * segmentDuration;
+
+//     const formatTime = (seconds) => {
+//       const h = String(Math.floor(seconds / 3600)).padStart(2, "0");
+//       const m = String(Math.floor((seconds % 3600) / 60)).padStart(2, "0");
+//       const s = String(seconds % 60).padStart(2, "0");
+//       return `${h}:${m}:${s}.000`;
+//     };
+
+//     vttLines.push(`${formatTime(start)} --> ${formatTime(end)}`);
+//     vttLines.push(screenshot.screenshotUrl);
+//     vttLines.push(""); // blank line
+//   });
+
+//   return vttLines.join("\n");
+// }
+
+// const uploadVideo = asyncHandler(async (req, res) => {
+//   const userId = req.user.id;
+//   const socketId = req.body.socketId;
+
+//   if (!userId) throw new ApiError(400, "User ID is required");
+
+//   const channel = await Channel.findOne({ where: { ownerId: userId } });
+//   if (!channel) throw new ApiError(400, "Channel not found");
+
+//   const { title, description } = req.body;
+//   const videoFile = req.files?.videoFile?.[0]?.path;
+//   let thumbnail = req.files?.thumbnail?.[0]?.path;
+
+//   if (!videoFile) throw new ApiError(400, "Video is required");
+
+//   let duration;
+//   try {
+//     duration = await getVideoDuration(videoFile);
+//   } catch (err) {
+//     throw new ApiError(500, "Failed to get video duration");
+//   }
+
+//   const tempDir = path.join(os.tmpdir(), uuidv4());
+//   const cloudinaryFolder = `hls_videos/${uuidv4()}`;
+//   fs.mkdirSync(tempDir, { recursive: true });
+
+//   try {
+//     io.to(socketId).emit("uploadProgress", {
+//       percent: 0,
+//       status: "Starting upload...",
+//     });
+
+//     const uploadedFiles = await streamUploadHLS(
+//       videoFile,
+//       tempDir,
+//       cloudinaryFolder,
+//       socketId
+//     );
+
+//     const playlistUrl = uploadedFiles.find((f) => f.file === "index.m3u8")?.url;
+
+//     // Generate and upload segment screenshots
+//     const segmentScreenshots = [];
+//     const segmentFiles = fs
+//       .readdirSync(tempDir)
+//       .filter((f) => f.endsWith(".ts"))
+//       .sort();
+
+//     for (const segmentFile of segmentFiles) {
+//       const segmentPath = path.join(tempDir, segmentFile);
+//       const screenshotPath = path.join(tempDir, `${segmentFile}.jpg`);
+
+//       await new Promise((resolve, reject) => {
+//         Ffmpeg(segmentPath)
+//           .on("end", resolve)
+//           .on("error", reject)
+//           .screenshots({
+//             count: 1,
+//             timemarks: ["1"],
+//             filename: `${segmentFile}.jpg`,
+//             folder: tempDir,
+//           });
+//       });
+
+//       const uploaded = await uploadOnCloudinary(
+//         screenshotPath,
+//         `segment_screenshots`
+//       );
+//       segmentScreenshots.push({
+//         segment: segmentFile,
+//         screenshotUrl: uploaded.secure_url,
+//       });
+//     }
+
+//     // 🆕 Generate VTT file
+//     const vttContent = generateVTTFile(segmentScreenshots, 10); // each segment = 10s
+//     const vttPath = path.join(tempDir, "preview.vtt");
+//     fs.writeFileSync(vttPath, vttContent);
+
+//     const uploadedVtt = await uploadOnCloudinary(vttPath, `vtt_files`);
+//     const vttUrl = uploadedVtt.secure_url;
+
+//     // Upload thumbnail
+//     let uploadedThumbnail;
+//     if (thumbnail) {
+//       uploadedThumbnail = await uploadOnCloudinary(thumbnail, `thumbnails`);
+//     } else {
+//       const firstFramePath = path.join(tempDir, "first_frame.jpg");
+//       await new Promise((resolve, reject) => {
+//         Ffmpeg(videoFile)
+//           .on("end", resolve)
+//           .on("error", reject)
+//           .screenshots({
+//             count: 1,
+//             timemarks: ["1"],
+//             filename: "first_frame.jpg",
+//             folder: tempDir,
+//           });
+//       });
+//       uploadedThumbnail = await uploadOnCloudinary(
+//         firstFramePath,
+//         `thumbnails`
+//       );
+//     }
+
+//     // Save to DB
+//     const video = await Video.create({
+//       title,
+//       description,
+//       duration,
+//       videoFile: playlistUrl,
+//       thumbnail: uploadedThumbnail.secure_url,
+//       ownerId: userId,
+//       channelId: channel.id,
+//     });
+
+//     res.status(201).json(
+//       new ApiResponse(
+//         201,
+//         {
+//           ...video.toJSON(),
+//           segmentScreenshots,
+//           vttUrl,
+//         },
+//         "Video uploaded successfully"
+//       )
+//     );
+//   } catch (error) {
+//     io.to(socketId).emit("uploadError", {
+//       error: "Upload failed",
+//       details: error.message,
+//     });
+//     throw new ApiError(500, "Video upload failed", error);
+//   } finally {
+//     rimraf.sync(tempDir);
+//   }
+// });
 
 const getAllVideos = asyncHandler(async (req, res) => {
   const {
