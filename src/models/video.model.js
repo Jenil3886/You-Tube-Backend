@@ -1,10 +1,16 @@
 import { DataTypes } from "sequelize";
-import { sequelize } from "../../config/sequelize.js"; // adjust path as needed
-import User from "./user.model.js"; // adjust path as needed
+import { sequelize } from "../../config/sequelize.js";
+import User from "./user.model.js";
 
 const Video = sequelize.define(
   "Video",
   {
+    // videoFile: {
+    //   type: DataTypes.ARRAY(DataTypes.STRING),
+    //   defaultValue: [],
+    //   comment: "Cloudinary URL",
+    // },
+
     videoFile: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -20,13 +26,14 @@ const Video = sequelize.define(
       allowNull: false,
     },
     description: {
-      type: DataTypes.STRING,
+      type: DataTypes.TEXT,
       allowNull: false,
     },
     duration: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.STRING,
       allowNull: false,
     },
+    // duration: DataTypes.INTEGER,
     views: {
       type: DataTypes.INTEGER,
       defaultValue: 0,
@@ -38,7 +45,15 @@ const Video = sequelize.define(
     ownerId: {
       type: DataTypes.INTEGER,
       references: {
-        model: User,
+        model: "Users", // Use table name string to avoid circular ref
+        key: "id",
+      },
+    },
+    channelId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: "Channels", // Use table name string to avoid circular ref
         key: "id",
       },
     },

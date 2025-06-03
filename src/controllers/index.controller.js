@@ -40,7 +40,7 @@ export {
 } from "./user.controller.js";
 export {
   getAllVideos,
-  publishAVideo,
+  uploadVideo,
   getVideoById,
   updateVideo,
   deleteVideo,

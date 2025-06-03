@@ -1,3 +1,3 @@
-import connectDB from "../../config/db.js"; // adjust path as needed
+import connectDB from "../../config/db.js";
 
 export default connectDB;

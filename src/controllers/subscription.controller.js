@@ -6,7 +6,19 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 
 const toggleSubscription = asyncHandler(async (req, res) => {
   const { channelId } = req.params;
-  const { userId } = req.user;
+  const userId = req.user?.id;
+
+  if (!userId) {
+    return res
+      .status(401)
+      .json(new ApiResponse(401, {}, "Unauthorized: No user id found"));
+  }
+
+  if (parseInt(channelId) === userId) {
+    return res
+      .status(400)
+      .json(new ApiResponse(400, {}, "You cannot subscribe to yourself"));
+  }
 
   const existingSubscription = await Subscription.findOne({
     where: { channelId, subscriberId: userId },
@@ -14,11 +26,15 @@ const toggleSubscription = asyncHandler(async (req, res) => {
 
   if (existingSubscription) {
     await existingSubscription.destroy();
-    return res.status(200).json(new ApiResponse(200, {}, "Unsubscribed"));
+    return res
+      .status(200)
+      .json(new ApiResponse(200, { subscribed: false }, "Unsubscribed"));
   }
 
   await Subscription.create({ channelId, subscriberId: userId });
-  res.status(201).json(new ApiResponse(201, {}, "Subscribed"));
+  res
+    .status(201)
+    .json(new ApiResponse(201, { subscribed: true }, "Subscribed"));
 });
 
 const getUserChannelSubscribers = asyncHandler(async (req, res) => {
@@ -35,7 +51,12 @@ const getUserChannelSubscribers = asyncHandler(async (req, res) => {
 });
 
 const getSubscribedChannels = asyncHandler(async (req, res) => {
-  const { userId } = req.user;
+  const userId = req.user?.id;
+  if (!userId) {
+    return res
+      .status(401)
+      .json(new ApiResponse(401, {}, "Unauthorized: No user id found"));
+  }
 
   const channels = await Subscription.findAll({
     where: { subscriberId: userId },

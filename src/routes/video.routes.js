@@ -3,20 +3,22 @@ import {
   deleteVideo,
   getAllVideos,
   getVideoById,
-  publishAVideo,
+  uploadVideo,
   togglePublishStatus,
   updateVideo,
 } from "../controllers/video.controller.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import { upload } from "../middlewares/multer.middleware.js";
+import { toggleVideoLike } from "../controllers/like.controller.js";
 
 const router = Router();
-router.use(verifyJWT); // Apply verifyJWT middleware to all routes in this file
+// router.use(verifyJWT); // Apply verifyJWT middleware to all routes in this file
 
 router
   .route("/")
   .get(getAllVideos)
   .post(
+    verifyJWT, // Ensure this middleware is applied
     upload.fields([
       {
         name: "videoFile",
@@ -45,7 +47,7 @@ router
 
       next();
     },
-    publishAVideo
+    uploadVideo
   );
 
 router
@@ -55,5 +57,6 @@ router
   .patch(upload.single("thumbnail"), updateVideo);
 
 router.route("/toggle/publish/:videoId").patch(togglePublishStatus);
+router.route("/like/:videoId").post(verifyJWT, toggleVideoLike);
 
 export default router;

@@ -3,6 +3,12 @@ import { sequelize } from "../../config/sequelize.js"; // Corrected export
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
+const accessTokenSecret = process.env.ACCESS_TOKEN_SECRET;
+const accessTokenExpiry = process.env.ACCESS_TOKEN_EXPIRY;
+
+const refreshTokenSecret = process.env.REFRESH_TOKEN_SECRET;
+const refreshTokenExpiry = process.env.REFRESH_TOKEN_EXPIRY;
+
 const User = sequelize.define(
   "User",
   {
@@ -79,9 +85,9 @@ User.prototype.generateAccessToken = function () {
       username: this.username,
       fullName: this.fullName,
     },
-    process.env.ACCESS_TOKEN_SECRET,
+    accessTokenSecret,
     {
-      expiresIn: process.env.ACCESS_TOKEN_EXPIRY,
+      expiresIn: accessTokenExpiry,
     }
   );
 };
@@ -91,9 +97,9 @@ User.prototype.generateRefreshToken = function () {
     {
       id: this.id,
     },
-    process.env.REFRESH_TOKEN_SECRET,
+    refreshTokenSecret,
     {
-      expiresIn: process.env.REFRESH_TOKEN_EXPIRY,
+      expiresIn: refreshTokenExpiry,
     }
   );
 };

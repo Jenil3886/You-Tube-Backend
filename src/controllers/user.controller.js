@@ -1,10 +1,13 @@
 import User from "../models/user.model.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
-import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import uploadOnCloudinary from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
 import Sequelize from "sequelize";
+
+const accessTokenSecret = process.env.ACCESS_TOKEN_SECRET;
+const accessTokenExpiry = process.env.ACCESS_TOKEN_EXPIRY;
 
 const generateAccessAndRefreshTokens = async (userId) => {
   try {
@@ -17,6 +20,7 @@ const generateAccessAndRefreshTokens = async (userId) => {
 
     return { accessToken, refreshToken };
   } catch (error) {
+    console.log("error -------------->", error);
     throw new ApiError(
       500,
       "Something went wrong while generating refresh and access tokens"
@@ -25,71 +29,77 @@ const generateAccessAndRefreshTokens = async (userId) => {
 };
 
 const registerUser = asyncHandler(async (req, res) => {
-  const { fullName, email, username, password } = req.body;
+  try {
+    const { fullName, email, username, password } = req.body;
 
-  console.log("BODY:", req.body);
-  console.log("FILES:", req.files);
+    if (
+      [fullName, email, username, password].some(
+        (field) => field?.trim() === ""
+      )
+    ) {
+      throw new ApiError(400, "All fields are required");
+    }
 
-  if (
-    [fullName, email, username, password].some((field) => field?.trim() === "")
-  ) {
-    throw new ApiError(400, "All fields are required", error.message);
+    const existedUser = await User.findOne({
+      where: { [Sequelize.Op.or]: [{ username }, { email }] },
+    });
+
+    if (existedUser) {
+      throw new ApiError(409, "User with email or username already exists");
+    }
+
+    const avatarLocalPath = req.files?.avatar?.[0]?.path;
+    const coverImageLocalPath = req.files?.coverImage?.[0]?.path;
+
+    if (!avatarLocalPath) {
+      console.error("Avatar file is missing");
+      throw new ApiError(400, "Avatar file is required");
+    }
+
+    const avatar = await uploadOnCloudinary(avatarLocalPath);
+    const coverImage = await uploadOnCloudinary(coverImageLocalPath);
+
+    const user = await User.create({
+      fullName,
+      //   avatar: "maja_aave_ae_url",
+      avatar: avatar?.url || "",
+      coverImage: coverImage?.url || "",
+      email,
+      password,
+      username: username.toLowerCase(),
+    });
+
+    const token = jwt.sign({ id: user.id }, accessTokenSecret, {
+      expiresIn: accessTokenExpiry,
+    });
+
+    const createdUser = await User.findByPk(user.id, {
+      attributes: { exclude: ["password", "refreshToken"] },
+    });
+
+    if (!createdUser) {
+      throw new ApiError(
+        500,
+        "Something went wrong while registering the user"
+      );
+    }
+
+    return res
+      .status(201)
+      .json(
+        new ApiResponse(201, createdUser, "User registered successfully", token)
+      );
+  } catch (error) {
+    console.error("Registration Error:", error.message || error);
+    throw error;
   }
-  console.log("Received body:", req.body);
-
-  const existedUser = await User.findOne({
-    where: { [Sequelize.Op.or]: [{ username }, { email }] },
-  });
-
-  if (existedUser) {
-    throw new ApiError(
-      409,
-      "User with email or username already exists",
-      error.message
-    );
-  }
-
-  const avatarLocalPath = req.files?.avatar?.[0]?.path;
-  const coverImageLocalPath = req.files?.coverImage?.[0]?.path;
-
-  if (!avatarLocalPath) {
-    console.log("avater");
-    throw new ApiError(400, "Avatar file is required");
-  }
-
-  const avatar = await uploadOnCloudinary(avatarLocalPath);
-  const coverImage = await uploadOnCloudinary(coverImageLocalPath);
-
-  const user = await User.create({
-    fullName,
-    avatar: avatar.url,
-    coverImage: coverImage?.url || "",
-    email,
-    password,
-    username: username.toLowerCase(),
-  });
-
-  const createdUser = await User.findByPk(user.id, {
-    attributes: { exclude: ["password", "refreshToken"] },
-  });
-
-  if (!createdUser) {
-    throw new ApiError(
-      500,
-      "Something went wrong while registering the user",
-      error.message
-    );
-  }
-
-  return res
-    .status(201)
-    .json(new ApiResponse(201, createdUser, "User registered successfully"));
 });
 
 const loginUser = asyncHandler(async (req, res) => {
   const { email, username, password } = req.body;
-  console.log("fgnkdhjgdnkhdbngdjkhbdfhb", req.body);
+
   if (!username && !email) {
+    console.error("Missing username or email"); // Log missing fields
     throw new ApiError(400, "username or email is required");
   }
 
@@ -98,43 +108,46 @@ const loginUser = asyncHandler(async (req, res) => {
   });
 
   if (!user) {
+    console.error("User not found for:", { email, username }); // Log missing user
     throw new ApiError(404, "User does not exist");
   }
 
   const isPasswordValid = await user.isPasswordCorrect(password);
 
   if (!isPasswordValid) {
+    console.error("Invalid password for user:", { email, username }); // Log invalid password
     throw new ApiError(401, "Invalid user credentials");
   }
 
-  const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(
-    user.id
-  );
-
-  const loggedInUser = await User.findByPk(user.id, {
-    attributes: { exclude: ["password", "refreshToken"] },
-  });
-
-  const options = {
-    httpOnly: true,
-    secure: true,
-  };
-
-  return res
-    .status(200)
-    .cookie("accessToken", accessToken, options)
-    .cookie("refreshToken", refreshToken, options)
-    .json(
-      new ApiResponse(
-        200,
-        {
-          user: loggedInUser,
-          accessToken,
-          refreshToken,
-        },
-        "User logged In Successfully"
-      )
+  try {
+    const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(
+      user.id
     );
+
+    const loggedInUser = await User.findByPk(user.id, {
+      attributes: { exclude: ["password", "refreshToken"] },
+    });
+
+    return res
+      .status(200)
+      .cookie("accessToken", accessToken, { secure: false })
+      .cookie("refreshToken", refreshToken, { secure: false })
+      .json(
+        new ApiResponse(
+          200,
+          {
+            user: loggedInUser,
+            accessToken,
+            refreshToken,
+            token: accessToken,
+          },
+          "User logged In Successfully"
+        )
+      );
+  } catch (error) {
+    console.error("Error generating tokens:", error.message || error); // Log token generation errors
+    throw new ApiError(500, "Failed to generate tokens");
+  }
 });
 
 const logoutUser = asyncHandler(async (req, res) => {
@@ -224,9 +237,21 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
 });
 
 const getCurrentUser = asyncHandler(async (req, res) => {
+  if (!req.user) {
+    throw new ApiError(401, "Unauthorized: No user data found in request");
+  }
+
+  const user = await User.findByPk(req.user.id, {
+    attributes: ["id", "fullName", "username", "email", "avatar", "coverImage"],
+  });
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
   return res
     .status(200)
-    .json(new ApiResponse(200, req.user, "User fetched successfully"));
+    .json(new ApiResponse(200, user, "Current user fetched successfully"));
 });
 
 const updateAccountDetails = asyncHandler(async (req, res) => {

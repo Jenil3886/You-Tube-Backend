@@ -5,7 +5,7 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 
 const toggleVideoLike = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
-  const { userId } = req.user;
+  const userId = req.user.id; // Fix: always use req.user.id
 
   const existingLike = await Like.findOne({ where: { videoId, userId } });
 
@@ -20,7 +20,7 @@ const toggleVideoLike = asyncHandler(async (req, res) => {
 
 const toggleCommentLike = asyncHandler(async (req, res) => {
   const { commentId } = req.params;
-  const { userId } = req.user;
+  const userId = req.user.id; // Fix: always use req.user.id
 
   const existingLike = await Like.findOne({ where: { commentId, userId } });
 
@@ -35,7 +35,7 @@ const toggleCommentLike = asyncHandler(async (req, res) => {
 
 const toggleTweetLike = asyncHandler(async (req, res) => {
   const { tweetId } = req.params;
-  const { userId } = req.user;
+  const userId = req.user.id; // Fix: always use req.user.id
 
   const existingLike = await Like.findOne({ where: { tweetId, userId } });
 
