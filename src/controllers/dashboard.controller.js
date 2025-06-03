@@ -8,7 +8,7 @@ const getChannelStats = asyncHandler(async (req, res) => {
   const { userId } = req.user;
 
   const totalVideos = await Video.count({ where: { ownerId: userId } });
-  const totalViews = await Video.sum("views", { where: { ownerId: userId } });
+  // const totalViews = await Video.sum("views", { where: { ownerId: userId } });
   const totalSubscribers = await Subscription.count({
     where: { channelId: userId },
   });

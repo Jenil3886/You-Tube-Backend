@@ -51,8 +51,6 @@ const uploadOnCloudinary = async (
   fileName
 ) => {
   try {
-    console.log(localFilePath, "local file path ===============");
-
     if (!localFilePath || !fs.existsSync(localFilePath)) {
       throw new Error(`File does not exist at path: ${localFilePath}`);
     }
