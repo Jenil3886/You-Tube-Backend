@@ -57,6 +57,11 @@ const Video = sequelize.define(
         key: "id",
       },
     },
+
+    previewFolder: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
   },
   {
     timestamps: true,
