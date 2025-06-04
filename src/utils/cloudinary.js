@@ -79,6 +79,49 @@
 
 /////////////////////////////////////////////
 
+// import { v2 as cloudinary } from "cloudinary";
+// import fs from "fs";
+// import path from "path";
+
+// cloudinary.config({
+//   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+//   api_key: process.env.CLOUDINARY_API_KEY,
+//   api_secret: process.env.CLOUDINARY_API_SECRET,
+// });
+
+// const uploadOnCloudinary = async (
+//   localFilePath,
+//   folderName = "videos",
+//   fileName
+// ) => {
+//   try {
+//     if (!localFilePath || !fs.existsSync(localFilePath)) {
+//       throw new Error(`File does not exist at path: ${localFilePath}`);
+//     }
+//     const ext = path.extname(localFilePath).toLowerCase();
+
+//     let resourceType = "auto";
+//     if (ext === ".m3u8" || ext === ".ts") {
+//       resourceType = "raw";
+//     }
+
+//     const response = await cloudinary.uploader.upload(localFilePath, {
+//       resource_type: resourceType,
+//       folder: folderName,
+//       ...(fileName && { public_id: fileName }),
+//     });
+
+//     return response;
+//   } catch (error) {
+//     console.error("Cloudinary Upload Error:", error);
+//     throw new Error(`Failed to upload file to Cloudinary: ${error.message}`);
+//   }
+// };
+
+// export default uploadOnCloudinary;
+
+///////////////////////////////////////////
+
 import { v2 as cloudinary } from "cloudinary";
 import fs from "fs";
 import path from "path";
@@ -99,16 +142,12 @@ const uploadOnCloudinary = async (
       throw new Error(`File does not exist at path: ${localFilePath}`);
     }
     const ext = path.extname(localFilePath).toLowerCase();
-
-    let resourceType = "auto";
-    if (ext === ".m3u8" || ext === ".ts") {
-      resourceType = "raw";
-    }
+    const resourceType = ext === ".m3u8" || ext === ".ts" ? "raw" : "auto";
 
     const response = await cloudinary.uploader.upload(localFilePath, {
       resource_type: resourceType,
       folder: folderName,
-      ...(fileName && { public_id: fileName }),
+      public_id: fileName,
     });
 
     return response;
@@ -119,5 +158,3 @@ const uploadOnCloudinary = async (
 };
 
 export default uploadOnCloudinary;
-
-//

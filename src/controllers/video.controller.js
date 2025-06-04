@@ -294,6 +294,177 @@
 //     .json(new ApiResponse(200, video, "Publish status toggled successfully"));
 // });
 
+// import Video from "../models/video.model.js";
+// import Channel from "../models/Channel.model.js";
+// import { ApiError } from "../utils/ApiError.js";
+// import { ApiResponse } from "../utils/ApiResponse.js";
+// import { asyncHandler } from "../utils/asyncHandler.js";
+// import uploadOnCloudinary from "../utils/cloudinary.js";
+// import { getVideoDuration } from "../helper/getVideoDuration.js";
+// import streamUploadHLS from "../utils/ffmpegHelpers/streamUploadHLS.js";
+// import Ffmpeg from "fluent-ffmpeg";
+// import fs from "fs/promises";
+// import path from "path";
+// import os from "os";
+// import { v4 as uuidv4 } from "uuid";
+// import { io } from "../app.js";
+// import { generateVTTFile } from "../helper/generateVTTFile.js";
+// import Comment from "../models/comment.model.js";
+// import { Op, Sequelize } from "sequelize";
+// import User from "../models/user.model.js";
+// import deleteFromCloudinary from "../utils/deleteFromCloudinary.js";
+// import cloudinary from "../utils/cloudinary.js";
+
+// const uploadVideo = asyncHandler(async (req, res) => {
+//   console.log("Request received:", req.body);
+//   const userId = req.user.id;
+//   const socketId = req.body.socketId;
+
+//   //   if (!userId || !socketId)
+//   if (!userId) throw new ApiError(400, "User ID or Socket ID missing");
+
+//   const channel = await Channel.findOne({ where: { ownerId: userId } });
+//   if (!channel) throw new ApiError(400, "Channel not found");
+
+//   const { title, description } = req.body;
+//   if (!title || !description)
+//     throw new ApiError(400, "Title and Description are required");
+
+//   const videoFile = req.files?.videoFile?.[0]?.path;
+//   if (!videoFile) throw new ApiError(400, "Video file is required");
+
+//   let duration;
+//   try {
+//     duration = await getVideoDuration(videoFile);
+//   } catch (err) {
+//     throw new ApiError(500, "Failed to get video duration");
+//   }
+
+//   const tempDir = path.join(os.tmpdir(), uuidv4());
+//   const cloudinaryFolder = `thumbnails/${uuidv4()}`;
+//   await fs.mkdir(tempDir, { recursive: true });
+
+//   try {
+//     io.to(socketId).emit("uploadProgress", {
+//       percent: 0,
+//       status: "Starting upload...",
+//     });
+
+//     const uploadedFiles = await streamUploadHLS(
+//       videoFile,
+//       tempDir,
+//       `hls_videos/${uuidv4()}`,
+//       socketId
+//     );
+
+//     const playlistUrl = uploadedFiles.find((f) => f.file === "index.m3u8")?.url;
+
+//     const segmentFiles = (await fs.readdir(tempDir)).filter((f) =>
+//       f.endsWith(".ts")
+//     );
+//     const segmentScreenshots = [];
+
+//     for (const segmentFile of segmentFiles) {
+//       const segmentPath = path.join(tempDir, segmentFile);
+//       const screenshotPath = path.join(tempDir, `${segmentFile}.jpg`);
+//       await new Promise((resolve, reject) => {
+//         Ffmpeg(segmentPath)
+//           .on("end", resolve)
+//           .on("error", reject)
+//           .screenshots({
+//             count: 1,
+//             timemarks: ["1"],
+//             filename: `${segmentFile}.jpg`,
+//             folder: tempDir,
+//           });
+//       });
+
+//       const uploaded = await uploadOnCloudinary(
+//         screenshotPath,
+//         cloudinaryFolder
+//       );
+//       segmentScreenshots.push({
+//         segment: segmentFile,
+//         screenshotUrl: uploaded.secure_url,
+//       });
+//     }
+
+//     const vttContent = generateVTTFile(segmentScreenshots, 10);
+//     const vttPath = path.join(tempDir, "preview.vtt");
+//     await fs.writeFile(vttPath, vttContent);
+//     const uploadedVtt = await uploadOnCloudinary(vttPath, cloudinaryFolder);
+//     const vttUrl = uploadedVtt.secure_url;
+
+//     let thumbnailPath = req.files?.thumbnail?.[0]?.path;
+//     let uploadedThumbnail;
+
+//     if (thumbnailPath) {
+//       uploadedThumbnail = await uploadOnCloudinary(
+//         thumbnailPath,
+//         cloudinaryFolder
+//       );
+//     } else {
+//       const firstFramePath = path.join(tempDir, "first_frame.jpg");
+//       await new Promise((resolve, reject) => {
+//         Ffmpeg(videoFile)
+//           .on("end", resolve)
+//           .on("error", reject)
+//           .screenshots({
+//             count: 1,
+//             timemarks: ["1"],
+//             filename: "first_frame.jpg",
+//             folder: tempDir,
+//           });
+//       });
+//       uploadedThumbnail = await uploadOnCloudinary(
+//         firstFramePath,
+//         cloudinaryFolder
+//       );
+//     }
+
+//     const video = await Video.create({
+//       title,
+//       description,
+//       duration,
+//       videoFile: playlistUrl,
+//       thumbnail: uploadedThumbnail.secure_url,
+//       ownerId: userId,
+//       channelId: channel.id,
+//       //   previewFolder: cloudinaryFolder,
+//       previewFolder: vttUrl,
+//     });
+
+//     await fs.rm(tempDir, { recursive: true, force: true });
+
+//     return res.status(201).json(
+//       new ApiResponse(
+//         201,
+//         {
+//           ...video.toJSON(),
+//           segmentScreenshots,
+//           vttUrl,
+//         },
+//         "Video uploaded successfully"
+//       )
+//     );
+//   } catch (error) {
+//     console.error("Video Upload Error:", error);
+//     io.to(socketId)?.emit("uploadError", {
+//       error: "Upload failed",
+//       details: error.message,
+//     });
+
+//     // Attempt cleanup
+//     try {
+//       await fs.rm(tempDir, { recursive: true, force: true });
+//     } catch (cleanupErr) {
+//       console.warn("Cleanup failed:", cleanupErr);
+//     }
+
+//     throw new ApiError(500, "Video upload failed", error);
+//   }
+// });
+
 import Video from "../models/video.model.js";
 import Channel from "../models/Channel.model.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -309,18 +480,14 @@ import os from "os";
 import { v4 as uuidv4 } from "uuid";
 import { io } from "../app.js";
 import { generateVTTFile } from "../helper/generateVTTFile.js";
-import Comment from "../models/comment.model.js";
-import { Op, Sequelize } from "sequelize";
 import User from "../models/user.model.js";
-import deleteFromCloudinary from "../utils/deleteFromCloudinary.js";
-import cloudinary from "../utils/cloudinary.js";
+import Comment from "../models/comment.model.js";
+import { Sequelize } from "sequelize";
 
 const uploadVideo = asyncHandler(async (req, res) => {
-  console.log("Request received:", req.body);
   const userId = req.user.id;
   const socketId = req.body.socketId;
 
-  //   if (!userId || !socketId)
   if (!userId) throw new ApiError(400, "User ID or Socket ID missing");
 
   const channel = await Channel.findOne({ where: { ownerId: userId } });
@@ -430,37 +597,31 @@ const uploadVideo = asyncHandler(async (req, res) => {
       thumbnail: uploadedThumbnail.secure_url,
       ownerId: userId,
       channelId: channel.id,
-      //   previewFolder: cloudinaryFolder,
       previewFolder: vttUrl,
     });
 
     await fs.rm(tempDir, { recursive: true, force: true });
 
-    return res.status(201).json(
-      new ApiResponse(
-        201,
-        {
-          ...video.toJSON(),
-          segmentScreenshots,
-          vttUrl,
-        },
-        "Video uploaded successfully"
-      )
-    );
+    return res
+      .status(201)
+      .json(
+        new ApiResponse(
+          201,
+          { ...video.toJSON(), vttUrl },
+          "Video uploaded successfully"
+        )
+      );
   } catch (error) {
     console.error("Video Upload Error:", error);
     io.to(socketId)?.emit("uploadError", {
       error: "Upload failed",
       details: error.message,
     });
-
-    // Attempt cleanup
     try {
       await fs.rm(tempDir, { recursive: true, force: true });
     } catch (cleanupErr) {
       console.warn("Cleanup failed:", cleanupErr);
     }
-
     throw new ApiError(500, "Video upload failed", error);
   }
 });
