@@ -483,6 +483,17 @@ import { generateVTTFile } from "../helper/generateVTTFile.js";
 import User from "../models/user.model.js";
 import Comment from "../models/comment.model.js";
 import { Sequelize } from "sequelize";
+import deleteFromCloudinary from "../utils/deleteFromCloudinary.js";
+
+const getSegmentDuration = async (filePath) => {
+  return new Promise((resolve, reject) => {
+    Ffmpeg.ffprobe(filePath, (err, metadata) => {
+      if (err) return reject(err);
+      const duration = metadata.format.duration || 0;
+      resolve(duration);
+    });
+  });
+};
 
 const uploadVideo = asyncHandler(async (req, res) => {
   const userId = req.user.id;
@@ -531,29 +542,90 @@ const uploadVideo = asyncHandler(async (req, res) => {
     );
     const segmentScreenshots = [];
 
+    // for (const segmentFile of segmentFiles) {
+
+    //   const segmentPath = path.join(tempDir, segmentFile);
+    //   const screenshotPath = path.join(tempDir, `${segmentFile}.jpg`);
+
+    //   const duration = await getSegmentDuration(segmentPath);
+    //   const timeMark = duration < 1 ? "0" : "1";
+    //   await new Promise((resolve, reject) => {
+    //     Ffmpeg(segmentPath)
+    //       .on("end", resolve)
+    //       //   .on("error", reject)
+    //       .on("error", (err) => {
+    //         console.error("Failed on segment:", segmentPath);
+    //         reject(err);
+    //       })
+    //       .screenshots({
+    //         count: 1,
+    //         // timemarks: ["1"],
+    //         timemarks: [timeMark],
+
+    //         filename: `${segmentFile}.jpg`,
+    //         folder: tempDir,
+    //       });
+    //   });
+
+    //   const uploaded = await uploadOnCloudinary(
+    //     screenshotPath,
+    //     cloudinaryFolder
+    //   );
+    //   segmentScreenshots.push({
+    //     segment: segmentFile,
+    //     screenshotUrl: uploaded.secure_url,
+    //   });
+    // }
+
     for (const segmentFile of segmentFiles) {
       const segmentPath = path.join(tempDir, segmentFile);
       const screenshotPath = path.join(tempDir, `${segmentFile}.jpg`);
-      await new Promise((resolve, reject) => {
-        Ffmpeg(segmentPath)
-          .on("end", resolve)
-          .on("error", reject)
-          .screenshots({
-            count: 1,
-            timemarks: ["1"],
-            filename: `${segmentFile}.jpg`,
-            folder: tempDir,
-          });
-      });
 
-      const uploaded = await uploadOnCloudinary(
-        screenshotPath,
-        cloudinaryFolder
-      );
-      segmentScreenshots.push({
-        segment: segmentFile,
-        screenshotUrl: uploaded.secure_url,
-      });
+      try {
+        // optional: skip empty/broken .ts files
+        const stat = await fs.stat(segmentPath);
+        if (stat.size < 1000) {
+          console.warn(`⚠️ Skipping tiny segment: ${segmentFile}`);
+          continue;
+        }
+
+        await new Promise((resolve, reject) => {
+          Ffmpeg(segmentPath)
+            .on("end", resolve)
+            .on("error", (err) => {
+              console.warn(`⚠️ FFmpeg failed on: ${segmentPath}`);
+              reject(err);
+            })
+            .screenshots({
+              count: 1,
+              timemarks: ["0.5"],
+              filename: `${segmentFile}.jpg`,
+              folder: tempDir,
+            });
+        });
+
+        const uploaded = await uploadOnCloudinary(
+          screenshotPath,
+          cloudinaryFolder
+        );
+
+        if (uploaded?.secure_url) {
+          segmentScreenshots.push({
+            segment: segmentFile,
+            screenshotUrl: uploaded.secure_url,
+          });
+        }
+      } catch (err) {
+        console.warn(
+          `⚠️ Failed to process segment: ${segmentFile}`,
+          err.message
+        );
+        continue;
+      }
+    }
+
+    if (segmentScreenshots.length === 0) {
+      throw new ApiError(500, "No valid segments to generate previews");
     }
 
     const vttContent = generateVTTFile(segmentScreenshots, 10);
@@ -639,6 +711,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
   const pageNum = parseInt(page);
   const limitNum = parseInt(limit);
   if (isNaN(pageNum) || isNaN(limitNum)) {
+    console.log(400, "Page and limit must be valid numbers");
     throw new ApiError(400, "Page and limit must be valid numbers");
   }
 

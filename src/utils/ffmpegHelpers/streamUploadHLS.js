@@ -273,6 +273,7 @@ export default function streamUploadHLS(
       );
       uploadedFiles.push({ file: fileName, url: result.secure_url });
       uploadedTsFiles.add(fileName);
+      console.log("✅ Uploaded .ts segment:", fileName);
     };
 
     const maybeUploadM3U8 = async () => {
@@ -290,6 +291,8 @@ export default function streamUploadHLS(
         percent: 100,
         status: "Upload complete",
       });
+
+      console.log("✅ Uploaded index.m3u8");
       resolve(uploadedFiles);
     };
 

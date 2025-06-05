@@ -155,6 +155,7 @@ export default function convertToHLS(videoPath, outputDir, socketId) {
       .on("progress", (progress) => {
         const percent = progress.percent?.toFixed(2);
         if (percent && !isNaN(percent)) {
+          console.log(`Segmenting progress: ${percent}%`);
           io.to(socketId).emit("uploadProgress", {
             percent,
             status: `Processing video: ${percent}%`,
