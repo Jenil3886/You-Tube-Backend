@@ -4,58 +4,121 @@ import Channel from "../models/Channel.model.js";
 import uploadOnCloudinary from "../utils/cloudinary.js";
 
 // Create a new channel
+// export const createChannel = async (req, res) => {
+//   //   const { profilePicture, bannerPicture } = req.files;
+//   const { name, handle, description } = req.body;
+
+//   if (!name) {
+//     return res
+//       .status(400)
+//       .json(new ApiResponse(400, null, "Channel name is required"));
+//   }
+
+//   // Check if the user already has a channel
+//   const existingChannel = await Channel.findOne({
+//     where: { ownerId: req.user.id },
+//   });
+
+//   if (existingChannel) {
+//     return res
+//       .status(400)
+//       .json(
+//         new ApiResponse(
+//           400,
+//           null,
+//           "You already have a channel. You cannot create multiple channels."
+//         )
+//       );
+//   }
+
+//   const profilePictureLocalPath = req.files?.avatar?.[0]?.path;
+//   const bannerPictureLocalPath = req.files?.coverImage?.[0]?.path;
+
+//   const profilePicture = await uploadOnCloudinary(profilePictureLocalPath);
+//   const bannerPicture = await uploadOnCloudinary(bannerPictureLocalPath);
+
+//   const newChannel = await Channel.create({
+//     name,
+//     handle,
+//     description,
+//     profilePicture: profilePicture?.url || "",
+//     bannerPicture: bannerPicture?.url || "",
+//     // profilePicture,
+//     // bannerPicture,
+//     ownerId: req.user.id,
+//   });
+
+//   res
+//     .status(201)
+//     .json(new ApiResponse(201, newChannel, "Channel created successfully"));
+// };
+
 export const createChannel = async (req, res) => {
-  const { profilePicture, bannerPicture } = req.files;
-  const { name, handle, description } = req.body;
+  try {
+    const { name, handle, description } = req.body;
 
-  if (!name) {
+    if (!name?.trim()) {
+      return res
+        .status(400)
+        .json(new ApiResponse(400, null, "Channel name is required"));
+    }
+
+    // Check if the user already has a channel
+    const existingChannel = await Channel.findOne({
+      where: { ownerId: req.user.id },
+    });
+
+    if (existingChannel) {
+      return res
+        .status(400)
+        .json(
+          new ApiResponse(
+            400,
+            null,
+            "You already have a channel. You cannot create multiple channels."
+          )
+        );
+    }
+
+    // Get uploaded file paths (may be undefined)
+    const profilePictureLocalPath = req.files?.avatar?.[0]?.path;
+    const bannerPictureLocalPath = req.files?.coverImage?.[0]?.path;
+
+    // Upload to Cloudinary (only if files exist)
+    const profilePictureUpload = profilePictureLocalPath
+      ? await uploadOnCloudinary(profilePictureLocalPath)
+      : null;
+
+    const bannerPictureUpload = bannerPictureLocalPath
+      ? await uploadOnCloudinary(bannerPictureLocalPath)
+      : null;
+
+    // Create channel with Cloudinary URLs (or empty string fallback)
+    const newChannel = await Channel.create({
+      name,
+      handle,
+      description,
+      profilePicture: profilePictureUpload?.url || "",
+      bannerPicture: bannerPictureUpload?.url || "",
+      ownerId: req.user.id,
+    });
+
     return res
-      .status(400)
-      .json(new ApiResponse(400, null, "Channel name is required"));
-  }
-
-  // Check if the user already has a channel
-  const existingChannel = await Channel.findOne({
-    where: { ownerId: req.user.id },
-  });
-
-  if (existingChannel) {
+      .status(201)
+      .json(new ApiResponse(201, newChannel, "Channel created successfully"));
+  } catch (error) {
+    console.error("Channel Creation Error:", error.message || error);
     return res
-      .status(400)
-      .json(
-        new ApiResponse(
-          400,
-          null,
-          "You already have a channel. You cannot create multiple channels."
-        )
-      );
+      .status(500)
+      .json(new ApiResponse(500, null, "Failed to create channel"));
   }
-
-  //   const profilePictureLocalPath = req.files?.avatar?.[0]?.path;
-  //   const bannerPictureLocalPath = req.files?.coverImage?.[0]?.path;
-
-  //   const profilePicture = await uploadOnCloudinary(profilePictureLocalPath);
-  //   const bannerPicture = await uploadOnCloudinary(bannerPictureLocalPath);
-
-  const newChannel = await Channel.create({
-    name,
-    handle,
-    description,
-    // profilePicture: profilePicture?.url || "",
-    // bannerPicture: bannerPicture?.url || "",
-    profilePicture,
-    bannerPicture,
-    ownerId: req.user.id,
-  });
-
-  res
-    .status(201)
-    .json(new ApiResponse(201, newChannel, "Channel created successfully"));
 };
 
 export const updateChannel = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { name, handle, description, profilePicture, channelBanner } = req.body;
+
+  console.log("Update Channel Request:", req.body);
 
   const channel = await Channel.findByPk(id);
   if (!channel) {

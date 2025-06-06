@@ -14,7 +14,7 @@ const Channel = sequelize.define(
       defaultValue: "default_handle",
     },
     description: {
-      type: DataTypes.STRING,
+      type: DataTypes.TEXT,
       allowNull: true,
     },
     profilePicture: {

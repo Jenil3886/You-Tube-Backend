@@ -45,7 +45,7 @@ const Video = sequelize.define(
     ownerId: {
       type: DataTypes.INTEGER,
       references: {
-        model: "Users", // Use table name string to avoid circular ref
+        model: "Users",
         key: "id",
       },
     },
@@ -53,7 +53,7 @@ const Video = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false,
       references: {
-        model: "Channels", // Use table name string to avoid circular ref
+        model: "Channels",
         key: "id",
       },
     },

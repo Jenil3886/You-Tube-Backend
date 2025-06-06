@@ -482,8 +482,10 @@ import { io } from "../app.js";
 import { generateVTTFile } from "../helper/generateVTTFile.js";
 import User from "../models/user.model.js";
 import Comment from "../models/comment.model.js";
+import Like from "../models/like.model.js";
 import { Sequelize } from "sequelize";
 import deleteFromCloudinary from "../utils/deleteFromCloudinary.js";
+import { v2 as cloudinary } from "cloudinary";
 
 const getSegmentDuration = async (filePath) => {
   return new Promise((resolve, reject) => {
@@ -739,7 +741,18 @@ const getAllVideos = asyncHandler(async (req, res) => {
 
   // Efficiently get all comment counts using bulk query
   const videoIds = videos.rows.map((v) => v.id);
+
   const commentCounts = await Comment.findAll({
+    attributes: [
+      "videoId",
+      [Sequelize.fn("COUNT", Sequelize.col("id")), "count"],
+    ],
+    where: { videoId: videoIds },
+    group: "videoId",
+  });
+
+  // Get like counts
+  const likeCounts = await Like.findAll({
     attributes: [
       "videoId",
       [Sequelize.fn("COUNT", Sequelize.col("id")), "count"],
@@ -753,9 +766,15 @@ const getAllVideos = asyncHandler(async (req, res) => {
     return acc;
   }, {});
 
+  const likeCountMap = likeCounts.reduce((acc, row) => {
+    acc[row.dataValues.videoId] = parseInt(row.dataValues.count);
+    return acc;
+  }, {});
+
   const videoRowsWithCommentCount = videos.rows.map((video) => ({
     ...video.toJSON(),
     commentCount: commentCountMap[video.id] || 0,
+    likeCount: likeCountMap[video.id] || 0,
   }));
 
   res.status(200).json(
@@ -796,13 +815,30 @@ const getVideoById = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Video not found");
   }
 
-  // Increment view count safely
-  await video.increment("views");
+  const userId = req.user?.id;
+
+  let isLiked = false;
+  let likeCount = 0;
+
+  if (userId) {
+    const like = await Like.findOne({ where: { videoId, userId } });
+
+    isLiked = !!like;
+
+    const totelLokes = await Like.count({
+      where: { videoId },
+    });
+
+    likeCount = totelLokes;
+  }
 
   // Attach extra fields
   const videoJson = video.toJSON();
+
   videoJson.streamUrl = videoJson.videoFile;
   videoJson.vttUrl = videoJson.vttUrl || null;
+  videoJson.isLiked = isLiked;
+  videoJson.likeCount = likeCount;
 
   res
     .status(200)
@@ -847,6 +883,44 @@ const updateVideo = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, video, "Video updated successfully"));
 });
 
+// const deleteVideo = asyncHandler(async (req, res) => {
+//   const { videoId } = req.params;
+
+//   const video = await Video.findByPk(videoId);
+//   if (!video) {
+//     throw new ApiError(404, "Video not found");
+//   }
+
+//   // 1. Delete comments associated with this video
+//   await Comment.destroy({ where: { videoId } });
+
+//   if (video.thumbnail) {
+//     try {
+//       await deleteFromCloudinary(video.thumbnail);
+//     } catch (err) {
+//       console.error("Thumbnail deletion failed:", err.message);
+//     }
+//   }
+
+//   // Delete previewFolder resources
+//   if (video.previewFolder) {
+//     try {
+//       await cloudinary.api.delete_resources_by_prefix(video.previewFolder);
+//       await cloudinary.api.delete_folder(video.previewFolder);
+//     } catch (err) {
+//       console.error("Cloudinary folder deletion failed:", err.message);
+//     }
+//   }
+//   //  Finally delete video from DB
+//   await video.destroy();
+
+//   return res
+//     .status(200)
+//     .json(
+//       new ApiResponse(200, {}, "Video and related media deleted successfully")
+//     );
+// });
+
 const deleteVideo = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
 
@@ -855,37 +929,43 @@ const deleteVideo = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Video not found");
   }
 
-  // 1. Delete comments associated with this video
-  await Comment.destroy({ where: { videoId } });
+  try {
+    // Step 1: Delete associated likes
+    // await Like.destroy({ where: { videoId } });
 
-  // 2. Delete thumbnail from Cloudinary
-  if (video.thumbnail) {
-    await deleteFromCloudinary(video.thumbnail);
+    // Step 2: Delete associated comments
+    await Comment.destroy({ where: { videoId } });
+
+    // Step 3: Delete Cloudinary resources (optional)
+    // if (video.thumbnail) {
+    //   try {
+    //     await deleteFromCloudinary(video.thumbnail);
+    //   } catch (e) {
+    //     console.error("Error deleting thumbnail:", e.message);
+    //   }
+    // }
+
+    // if (video.previewFolder) {
+    //   try {
+    //     await cloudinary.api.delete_resources_by_prefix(video.previewFolder);
+    //     await cloudinary.api.delete_folder(video.previewFolder);
+    //   } catch (e) {
+    //     console.error("Error deleting preview folder:", e.message);
+    //   }
+    // }
+
+    // Step 4: Finally delete the video
+    await video.destroy();
+
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(200, {}, "Video and related data deleted successfully")
+      );
+  } catch (err) {
+    console.error("Video deletion failed:", err);
+    throw new ApiError(500, "Something went wrong while deleting the video.");
   }
-
-  // 3. Delete all resources in previewFolder (e.g., .ts screenshots and VTT)
-  if (video.previewFolder) {
-    try {
-      // Delete all files under this folder
-      await cloudinary.api.delete_resources_by_prefix(video.previewFolder);
-
-      // Optionally delete the folder itself
-      await cloudinary.api.delete_folder(video.previewFolder);
-
-      console.log(`Deleted Cloudinary folder: ${video.previewFolder}`);
-    } catch (err) {
-      console.error("Error deleting Cloudinary folder:", err.message);
-    }
-  }
-
-  // 4. Finally delete video from DB
-  await video.destroy();
-
-  return res
-    .status(200)
-    .json(
-      new ApiResponse(200, {}, "Video and related media deleted successfully")
-    );
 });
 
 const togglePublishStatus = asyncHandler(async (req, res) => {
