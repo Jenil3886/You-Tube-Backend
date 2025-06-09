@@ -6,6 +6,7 @@ import {
   uploadVideo,
   togglePublishStatus,
   updateVideo,
+  incrementView,
 } from "../controllers/video.controller.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import { upload } from "../middlewares/multer.middleware.js";
@@ -58,5 +59,6 @@ router
 
 router.route("/toggle/publish/:videoId").patch(togglePublishStatus);
 router.route("/like/:videoId").post(verifyJWT, toggleVideoLike);
+router.post("/:videoId/increment-view", incrementView);
 
 export default router;

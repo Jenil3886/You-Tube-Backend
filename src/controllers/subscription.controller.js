@@ -24,17 +24,27 @@ const toggleSubscription = asyncHandler(async (req, res) => {
     where: { channelId, subscriberId: userId },
   });
 
+  let subscribed;
   if (existingSubscription) {
     await existingSubscription.destroy();
-    return res
-      .status(200)
-      .json(new ApiResponse(200, { subscribed: false }, "Unsubscribed"));
+    subscribed = false;
+  } else {
+    await Subscription.create({ channelId, subscriberId: userId });
+    subscribed = true;
   }
 
-  await Subscription.create({ channelId, subscriberId: userId });
-  res
-    .status(201)
-    .json(new ApiResponse(201, { subscribed: true }, "Subscribed"));
+  // Get the new subscriber count for the channel
+  const subscriberCount = await Subscription.count({ where: { channelId } });
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        { subscribed, subscriberCount },
+        subscribed ? "Subscribed" : "Unsubscribed"
+      )
+    );
 });
 
 const getUserChannelSubscribers = asyncHandler(async (req, res) => {

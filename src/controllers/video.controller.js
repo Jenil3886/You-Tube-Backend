@@ -374,6 +374,7 @@
 //           .screenshots({
 //             count: 1,
 //             timemarks: ["1"],
+
 //             filename: `${segmentFile}.jpg`,
 //             folder: tempDir,
 //           });
@@ -486,6 +487,7 @@ import Like from "../models/like.model.js";
 import { Sequelize } from "sequelize";
 import deleteFromCloudinary from "../utils/deleteFromCloudinary.js";
 import { v2 as cloudinary } from "cloudinary";
+import Subscription from "../models/subscription.model.js";
 
 const getSegmentDuration = async (filePath) => {
   return new Promise((resolve, reject) => {
@@ -676,15 +678,17 @@ const uploadVideo = asyncHandler(async (req, res) => {
 
     await fs.rm(tempDir, { recursive: true, force: true });
 
-    return res
-      .status(201)
-      .json(
-        new ApiResponse(
-          201,
-          { ...video.toJSON(), vttUrl },
-          "Video uploaded successfully"
-        )
-      );
+    return res.status(201).json(
+      new ApiResponse(
+        201,
+        {
+          ...video.toJSON(),
+          segmentScreenshots,
+          vttUrl,
+        },
+        "Video uploaded successfully"
+      )
+    );
   } catch (error) {
     console.error("Video Upload Error:", error);
     io.to(socketId)?.emit("uploadError", {
@@ -822,18 +826,21 @@ const getVideoById = asyncHandler(async (req, res) => {
 
   if (userId) {
     const like = await Like.findOne({ where: { videoId, userId } });
-
     isLiked = !!like;
-
-    const totelLokes = await Like.count({
-      where: { videoId },
-    });
-
+    const totelLokes = await Like.count({ where: { videoId } });
     likeCount = totelLokes;
   }
 
   // Attach extra fields
   const videoJson = video.toJSON();
+
+  // Fetch live subscriber count for the channel
+  if (videoJson.channel && videoJson.channel.id) {
+    const liveSubscriberCount = await Subscription.count({
+      where: { channelId: videoJson.channel.id },
+    });
+    videoJson.channel.subscriberCount = liveSubscriberCount;
+  }
 
   videoJson.streamUrl = videoJson.videoFile;
   videoJson.vttUrl = videoJson.vttUrl || null;
@@ -883,44 +890,6 @@ const updateVideo = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, video, "Video updated successfully"));
 });
 
-// const deleteVideo = asyncHandler(async (req, res) => {
-//   const { videoId } = req.params;
-
-//   const video = await Video.findByPk(videoId);
-//   if (!video) {
-//     throw new ApiError(404, "Video not found");
-//   }
-
-//   // 1. Delete comments associated with this video
-//   await Comment.destroy({ where: { videoId } });
-
-//   if (video.thumbnail) {
-//     try {
-//       await deleteFromCloudinary(video.thumbnail);
-//     } catch (err) {
-//       console.error("Thumbnail deletion failed:", err.message);
-//     }
-//   }
-
-//   // Delete previewFolder resources
-//   if (video.previewFolder) {
-//     try {
-//       await cloudinary.api.delete_resources_by_prefix(video.previewFolder);
-//       await cloudinary.api.delete_folder(video.previewFolder);
-//     } catch (err) {
-//       console.error("Cloudinary folder deletion failed:", err.message);
-//     }
-//   }
-//   //  Finally delete video from DB
-//   await video.destroy();
-
-//   return res
-//     .status(200)
-//     .json(
-//       new ApiResponse(200, {}, "Video and related media deleted successfully")
-//     );
-// });
-
 const deleteVideo = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
 
@@ -936,24 +905,59 @@ const deleteVideo = asyncHandler(async (req, res) => {
     // Step 2: Delete associated comments
     await Comment.destroy({ where: { videoId } });
 
-    // Step 3: Delete Cloudinary resources (optional)
-    // if (video.thumbnail) {
-    //   try {
-    //     await deleteFromCloudinary(video.thumbnail);
-    //   } catch (e) {
-    //     console.error("Error deleting thumbnail:", e.message);
-    //   }
-    // }
-
-    // if (video.previewFolder) {
-    //   try {
-    //     await cloudinary.api.delete_resources_by_prefix(video.previewFolder);
-    //     await cloudinary.api.delete_folder(video.previewFolder);
-    //   } catch (e) {
-    //     console.error("Error deleting preview folder:", e.message);
-    //   }
-    // }
-
+    // Step 3: Delete Cloudinary resources (thumbnail, previewFolder, HLS folder)
+    // Delete thumbnail
+    if (video.thumbnail) {
+      try {
+        await deleteFromCloudinary(video.thumbnail);
+      } catch (e) {
+        console.error("Error deleting thumbnail:", e.message);
+      }
+    }
+    // Delete previewFolder (VTT and segment screenshots)
+    if (video.previewFolder) {
+      try {
+        // If previewFolder is a URL, extract the folder path (e.g. 'folder1/folder2')
+        let folderPath = video.previewFolder;
+        if (folderPath.startsWith("http")) {
+          // Example: https://res.cloudinary.com/demo/video/upload/v1234567890/folder1/folder2/file.vtt
+          // Extract 'folder1/folder2' from the URL
+          const match = folderPath.match(/upload\/v\d+\/([^/]+\/[^/]+)\//);
+          if (match) {
+            folderPath = match[1];
+          } else {
+            folderPath = null;
+          }
+        }
+        if (folderPath) {
+          console.log("[Cloudinary] Deleting previewFolder:", folderPath);
+          await cloudinary.api.delete_resources_by_prefix(folderPath);
+          await cloudinary.api.delete_folder(folderPath);
+        } else {
+          console.warn(
+            "[Cloudinary] Could not extract previewFolder from:",
+            video.previewFolder
+          );
+        }
+      } catch (e) {
+        console.error("Error deleting preview folder:", e.message);
+      }
+    }
+    // Delete HLS folder (if videoFile is a folder or has a folder prefix)
+    if (video.videoFile && typeof video.videoFile === "string") {
+      // Try to extract the folder from the videoFile URL
+      const match = video.videoFile.match(/\/hls_videos\/[^/]+/);
+      if (match) {
+        const hlsFolder = match[0].replace(/^\//, ""); // Remove leading slash
+        try {
+          console.log("Deleting HLS folder from Cloudinary:", hlsFolder);
+          await cloudinary.api.delete_resources_by_prefix(hlsFolder);
+          await cloudinary.api.delete_folder(hlsFolder);
+        } catch (e) {
+          console.error("Error deleting HLS folder:", e.message);
+        }
+      }
+    }
     // Step 4: Finally delete the video
     await video.destroy();
 
@@ -993,6 +997,22 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, video, "Publish status toggled successfully"));
 });
 
+import express from "express";
+
+// Add this route handler at the end of the file (before export)
+const incrementView = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
+  const video = await Video.findByPk(videoId);
+  if (!video) {
+    throw new ApiError(404, "Video not found");
+  }
+  video.views = (video.views || 0) + 1;
+  await video.save();
+  res
+    .status(200)
+    .json(new ApiResponse(200, { views: video.views }, "View incremented"));
+});
+
 export {
   getAllVideos,
   uploadVideo,
@@ -1000,4 +1020,5 @@ export {
   updateVideo,
   deleteVideo,
   togglePublishStatus,
+  incrementView,
 };

@@ -66,8 +66,8 @@ const registerUser = asyncHandler(async (req, res) => {
 
     if (coverImageLocalPath) {
       const coverImage = await uploadOnCloudinary(coverImageLocalPath);
-      coverImageUrl = coverImage?.url || "";
     }
+    coverImageUrl = coverImage?.url || "";
 
     const user = await User.create({
       fullName,

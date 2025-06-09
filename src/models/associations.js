@@ -19,6 +19,7 @@ import Channel from "./Channel.model.js";
 import User from "./user.model.js";
 import Comment from "./comment.model.js";
 import Like from "./like.model.js";
+import Subscription from "./subscription.model.js";
 
 // Channel ↔ Video
 Channel.hasMany(Video, { as: "videos", foreignKey: "channelId" });
@@ -44,4 +45,10 @@ Like.belongsTo(User, { foreignKey: "userId" });
 Video.hasMany(Like, { foreignKey: "videoId", onDelete: "CASCADE" });
 Like.belongsTo(Video, { foreignKey: "videoId" });
 
-export { Video, Channel, User, Comment }; // Export Like too
+// Subscription ↔ Channel/User
+Subscription.belongsTo(User, { as: "Subscriber", foreignKey: "subscriberId" });
+Subscription.belongsTo(Channel, { as: "Channel", foreignKey: "channelId" });
+Channel.hasMany(Subscription, { as: "subscriptions", foreignKey: "channelId" });
+User.hasMany(Subscription, { as: "subscriptions", foreignKey: "subscriberId" });
+
+export { Video, Channel, User, Comment, Like, Subscription };
