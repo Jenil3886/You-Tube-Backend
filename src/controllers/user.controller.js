@@ -5,6 +5,11 @@ import uploadOnCloudinary from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
 import Sequelize from "sequelize";
+import crypto from "crypto";
+import nodemailer from "nodemailer";
+
+// In-memory store for reset tokens (for demo; use DB in production)
+const passwordResetTokens = {};
 
 const accessTokenSecret = process.env.ACCESS_TOKEN_SECRET;
 const accessTokenExpiry = process.env.ACCESS_TOKEN_EXPIRY;
@@ -47,10 +52,6 @@ const registerUser = asyncHandler(async (req, res) => {
     if (existedUser) {
       throw new ApiError(409, "User with email or username already exists");
     }
-
-    console.log("Files received:", req.files);
-    console.log("Avatar path:", req.files?.avatar?.[0]?.path);
-
     const avatarLocalPath = req.files?.avatar?.[0]?.path;
     const coverImageLocalPath = req.files?.coverImage?.[0]?.path;
 
@@ -58,20 +59,15 @@ const registerUser = asyncHandler(async (req, res) => {
       console.error("Avatar file is missing");
       throw new ApiError(400, "Avatar file is required");
     }
-
     const avatar = await uploadOnCloudinary(avatarLocalPath);
-    console.log("Avatar uploaded:", avatar);
-
     let coverImageUrl = "";
-
     if (coverImageLocalPath) {
-      const coverImage = await uploadOnCloudinary(coverImageLocalPath);
+      const uploadedCoverImage = await uploadOnCloudinary(coverImageLocalPath);
+      coverImageUrl = uploadedCoverImage?.url || "";
     }
-    coverImageUrl = coverImage?.url || "";
 
     const user = await User.create({
       fullName,
-      //   avatar: "maja_aave_ae_url",
       avatar: avatar?.url || "",
       coverImage: coverImageUrl || "",
       email,
@@ -413,6 +409,78 @@ const getWatchHistory = asyncHandler(async (req, res) => {
     );
 });
 
+const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+  if (!email) throw new ApiError(400, "Email is required");
+  const user = await User.findOne({ where: { email } });
+  if (!user) throw new ApiError(404, "No user found with this email");
+
+  // Generate token
+  const token = crypto.randomBytes(32).toString("hex");
+  passwordResetTokens[token] = {
+    userId: user.id,
+    expires: Date.now() + 1000 * 60 * 30,
+  };
+  const resetUrl = `${process.env.FRONTEND_URL || "http://localhost:5173"}/reset-password?token=${token}`;
+
+  // Send email using nodemailer
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || "smtp.gmail.com",
+    port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587,
+    secure: false,
+    auth: {
+      user: process.env.SMTP_USER, // your email
+      pass: process.env.SMTP_PASS, // your email password or app password
+    },
+  });
+
+  const mailOptions = {
+    from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    to: email,
+    subject: "Reset your password",
+    html: `<p>Click the link below to reset your password:</p><p><a href='${resetUrl}'>Reset Password</a></p><p>If you did not request this, you can ignore this email.</p>`,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+  } catch (err) {
+    console.error("Failed to send reset email:", err);
+    throw new ApiError(
+      500,
+      "Failed to send reset email. Please try again later."
+    );
+  }
+
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        {},
+        "Reset link sent to your email (check spam too)."
+      )
+    );
+});
+
+const resetPassword = asyncHandler(async (req, res) => {
+  const { token, password } = req.body;
+  if (!token || !password)
+    throw new ApiError(400, "Token and new password are required");
+  const data = passwordResetTokens[token];
+  if (!data || data.expires < Date.now())
+    throw new ApiError(400, "Invalid or expired reset token");
+  const user = await User.findByPk(data.userId);
+  if (!user) throw new ApiError(404, "User not found");
+  user.password = password;
+  await user.save();
+  delete passwordResetTokens[token];
+  res
+    .status(200)
+    .json(
+      new ApiResponse(200, {}, "Password reset successful. You can now log in.")
+    );
+});
+
 export {
   registerUser,
   loginUser,
@@ -425,4 +493,6 @@ export {
   updateUserCoverImage,
   getUserChannelProfile,
   getWatchHistory,
+  forgotPassword,
+  resetPassword,
 };
